@@ -6,10 +6,11 @@ $source_url = 'https://ecarstrade.com';
 echo "Script started!\r\n";
 echo "Getting pages count...\r\n";
 
+// We need to get cars count from main page;
 $html = file_get_contents($source_url."/auctions/stock");
 $dom = \voku\helper\HtmlDomParser::str_get_html($html);
 
-// Get total block;
+// Get cars total block;
 $total_block = $dom->findOne('.motorTable_fromToPagebar')->innerText();
 $total_block_temp = explode('/', $total_block);
 
@@ -17,18 +18,23 @@ $total_block_temp = explode('/', $total_block);
 $total_cars = 0;
 if(count($total_block_temp) > 1) $total_cars = trim($total_block_temp[1]);
 
-// Small loop for every page;
+// Calculate pages count;
 $pages_count = ceil($total_cars / 20);
-
 echo "Total pages count: $pages_count\r\n";
 
+/*
+ * Cards data scrapping;
+ * */
 $cars_data = [];
 $images_counter = 0;
 for($i = 1 ; $i <= $pages_count; $i++){
     echo "Getting data from page: $i / $pages_count...\r\n";
 
+    // Getting data from target page;
     $page_html = file_get_contents($source_url.'/auctions/stock/page'.$i.'?sort=mark_model.asc');
     $cars_dom = \voku\helper\HtmlDomParser::str_get_html($page_html);
+
+    // Get all cars blocks;
     $cars = $cars_dom->find('.items-list .car-item');
 
     foreach($cars as $car){
@@ -89,14 +95,18 @@ for($i = 1 ; $i <= $pages_count; $i++){
             'car_location',
         ];
         foreach($features as $feature){
+            // Add some magic for converting Title in Key (First registration date -> first_registration_date);
             $feature_key = $feature->getAttribute('data-original-title');
             $feature_key = str_replace(' ', '_', mb_strtolower($feature_key));
             $feature_key = str_replace(['<sub>', '</sub>'], '', $feature_key);
 
+            // Skip feature if we do not need it;
             if(!in_array($feature_key, $accept_features_array)) continue;
 
+            // Current feature value;
             $value = $feature->text();
 
+            // Small value fixes for some features;
             switch($feature_key){
                 case 'mileage':
                     $value = str_replace([' ', 'KM'], '', $value);
@@ -129,8 +139,10 @@ foreach($cars_data as $key => $car_item){
     // Check car on exist;
     $exist_car = $db->querySingle("SELECT * FROM cars WHERE id = ".$car_item['id']);
 
+    // If cars already exist, we must skip DB write and photo downloading;
     if($exist_car != null){
         echo "Car with ID ".$car_item['id']." already exist in DB\r\n";
+        // If we remove car from temp data array - next loop does not download photo for this car;
         unset($cars_data[$key]);
         continue;
     }
@@ -181,7 +193,7 @@ foreach($cars_data as $car_item){
     if(!file_exists($path.'/original')) mkdir($path.'/original');
     if(!file_exists($path.'/thumbnail')) mkdir($path.'/thumbnail');
 
-    // Save photos;
+    // Saving photos;
     // Original;
     foreach($car_item['photos']['original'] as $image){
         $filename = basename($image);
